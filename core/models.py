@@ -1,5 +1,15 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
+
+
+def validate_file_size(file):
+    """Rejects any uploaded file bigger than 5 MB, per the spec's limit."""
+    max_size_mb = 5
+    max_size_bytes = max_size_mb * 1024 * 1024
+    if file.size > max_size_bytes:
+        raise ValidationError(f"File too large. Max size is {max_size_mb} MB.")
 
 
 class Partner(models.Model):
@@ -80,7 +90,12 @@ class Request(models.Model):
     version = models.PositiveIntegerField(default=1)
 
     # When it entered its current step — needed for late detection.
-    step_entered_at = models.DateTimeField(auto_now_add=True)
+    # NOT auto_now_add: an auto_now_add field can only ever be set once, at
+    # creation, and Django blocks any manual update to it after that. Since
+    # this needs to be RESET every time current_step changes, it must be a
+    # plain field with a default, updated manually inside the transition
+    # engine whenever the step changes.
+    step_entered_at = models.DateTimeField(default=timezone.now)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -156,7 +171,7 @@ class Attachment(models.Model):
     request = models.ForeignKey(
         Request, on_delete=models.CASCADE, related_name="attachments"
     )
-    file = models.FileField(upload_to="attachments/")
+    file = models.FileField(upload_to="attachments/", validators=[validate_file_size])
     uploaded_by = models.ForeignKey(User, on_delete=models.PROTECT)
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
