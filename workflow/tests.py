@@ -188,3 +188,5 @@ class TransitionTests(TestCase):
      self.request.refresh_from_db()
 
      self.assertEqual(self.request.current_step, "DEPLOYMENT")
+     
+     
