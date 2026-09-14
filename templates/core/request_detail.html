@@ -11,6 +11,39 @@
 <a href="{% url 'request_edit' req.pk %}">Edit</a>
 <a href="{% url 'request_list' %}">Back to list</a>
 
+{% if messages %}
+<ul>
+    {% for message in messages %}
+<li class="{% if 'error' in message.tags %}text-danger{% else %}text-success{% endif %}">
+    {{ message }}
+</li>    {% endfor %}
+</ul>
+{% endif %}
+
+<h2>Actions</h2>
+{% for t in transitions %}
+    {% if t.allowed %}
+        {% if t.needs_reason %}
+        <form method="post" action="{% url 'request_transition' req.pk t.target_step %}" style="margin-bottom: 8px;">
+            {% csrf_token %}
+            <label>{{ t.label }} — reason:</label>
+            <textarea name="reason" rows="2" required></textarea>
+            <button type="submit">{{ t.label }}</button>
+        </form>
+        {% else %}
+        <form method="post" action="{% url 'request_transition' req.pk t.target_step %}" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit">{{ t.label }}</button>
+        </form>
+        {% endif %}
+    {% else %}
+        <button disabled title="{{ t.disabled_reason }}">{{ t.label }}</button>
+        <small>{{ t.disabled_reason }}</small><br>
+    {% endif %}
+{% empty %}
+<p>No actions available from this step.</p>
+{% endfor %}
+
 <h2>Checklist</h2>
 <ul>
     {% for item in req.checklist_items.all %}

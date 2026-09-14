@@ -83,18 +83,16 @@ class Request(models.Model):
     current_step = models.CharField(
         max_length=20, choices=STEP_CHOICES, default="DRAFT"
     )
-    on_hold_from_step = models.CharField(
-     max_length=20,
-     choices=STEP_CHOICES,
-     null=True,
-    blank=True,
-    )
-    on_hold_reason = models.TextField(blank=True)
     description = models.TextField(blank=True)
 
     # Used for the "two people editing at once" protection (spec section 6c).
     # Every save that changes the request bumps this number by 1.
     version = models.PositiveIntegerField(default=1)
+
+    # Used by the On Hold / resume logic in workflow/engine.py: remembers
+    # which step to go back to, and why it was paused.
+    on_hold_from_step = models.CharField(max_length=20, null=True, blank=True)
+    on_hold_reason = models.CharField(max_length=500, blank=True, default="")
 
     # When it entered its current step — needed for late detection.
     # NOT auto_now_add: an auto_now_add field can only ever be set once, at
