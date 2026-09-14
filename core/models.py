@@ -83,6 +83,13 @@ class Request(models.Model):
     current_step = models.CharField(
         max_length=20, choices=STEP_CHOICES, default="DRAFT"
     )
+    on_hold_from_step = models.CharField(
+     max_length=20,
+     choices=STEP_CHOICES,
+     null=True,
+    blank=True,
+    )
+    on_hold_reason = models.TextField(blank=True)
     description = models.TextField(blank=True)
 
     # Used for the "two people editing at once" protection (spec section 6c).
