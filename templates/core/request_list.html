@@ -1,0 +1,28 @@
+<h1>Requests</h1>
+
+<a href="{% url 'request_create' %}">+ New Request</a>
+<a href="{% url 'export_requests_csv' %}?{{ request.GET.urlencode }}">Export CSV</a>
+
+<form method="get">
+    {{ filter.form.as_p }}
+    <button type="submit">Filter</button>
+</form>
+
+<table border="1" cellpadding="6">
+    <tr>
+        <th>ID</th><th>Partner</th><th>Service</th><th>Step</th>
+        <th>Owner</th><th>Target Date</th>
+    </tr>
+    {% for req in filter.qs %}
+    <tr>
+        <td><a href="{% url 'request_detail' req.pk %}">{{ req.id }}</a></td>
+        <td>{{ req.partner.name }}</td>
+        <td>{{ req.get_service_display }}</td>
+        <td>{{ req.get_current_step_display }}</td>
+        <td>{{ req.owner|default:"—" }}</td>
+        <td>{{ req.target_date }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="6">No requests match your filters.</td></tr>
+    {% endfor %}
+</table>
