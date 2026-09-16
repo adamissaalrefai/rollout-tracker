@@ -34,6 +34,10 @@ class RequestFormTest(TestCase):
             "priority": "NORMAL",
             "target_date": (timezone.now().date() + timedelta(days=10)).isoformat(),
             "description": "Enable 5G data for Test Telecom",
+            # RequestForm now carries a required hidden 'version' field
+            # (added for the two-people-editing protection) — needs a
+            # value here or the form is correctly rejected as incomplete.
+            "version": 1,
         }
         data.update(overrides)
         return data

@@ -22,7 +22,3 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("requests/", include("core.urls")),
 ]
-
-urlpatterns = [
-    path("admin/", admin.site.urls),
-]

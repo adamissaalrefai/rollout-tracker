@@ -79,12 +79,19 @@ def deployment_checklist_complete(request):
     return True
 
 def valid_rejection_reason(request):
-    if not request.comments.exists():
+    # §4 requires "a reason of at least 20 characters." Checking just
+    # request.comments.exists() (the old version) accepted a 1-character
+    # comment — this checks the length of the MOST RECENT comment, which
+    # is the one views.py writes right before calling this transition.
+    last_comment = request.comments.order_by("-timestamp").first()
+
+    if not last_comment or len(last_comment.text.strip()) < 20:
         raise ValidationError(
-            "A comment is required when rejecting a request."
+            "A rejection reason of at least 20 characters is required."
         )
 
     return True
+
 
 def valid_hold_reason(request):
     if not request.on_hold_reason.strip():

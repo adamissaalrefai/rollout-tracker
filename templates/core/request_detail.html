@@ -15,8 +15,7 @@
 <ul>
     {% for message in messages %}
 <li class="{% if 'error' in message.tags %}text-danger{% else %}text-success{% endif %}">
-    {{ message }}
-</li>    {% endfor %}
+    {% endfor %}
 </ul>
 {% endif %}
 
@@ -26,6 +25,7 @@
         {% if t.needs_reason %}
         <form method="post" action="{% url 'request_transition' req.pk t.target_step %}" style="margin-bottom: 8px;">
             {% csrf_token %}
+            <input type="hidden" name="expected_version" value="{{ req.version }}">
             <label>{{ t.label }} — reason:</label>
             <textarea name="reason" rows="2" required></textarea>
             <button type="submit">{{ t.label }}</button>
@@ -33,6 +33,7 @@
         {% else %}
         <form method="post" action="{% url 'request_transition' req.pk t.target_step %}" style="display:inline;">
             {% csrf_token %}
+            <input type="hidden" name="expected_version" value="{{ req.version }}">
             <button type="submit">{{ t.label }}</button>
         </form>
         {% endif %}
@@ -47,7 +48,22 @@
 <h2>Checklist</h2>
 <ul>
     {% for item in req.checklist_items.all %}
-    <li>[{{ item.step }}] {{ item.label }} — {{ item.status }}</li>
+    <li>
+        [{{ item.step }}] {{ item.label }} — <strong>{{ item.status }}</strong>
+        {% if item.assignee %}(assigned: {{ item.assignee }}){% endif %}
+        {% if item.note %}<br><em>Note: {{ item.note }}</em>{% endif %}
+        <form method="post" action="{% url 'checklist_item_update' item.pk %}" style="display:inline;">
+            {% csrf_token %}
+            <select name="status">
+                <option value="PENDING" {% if item.status == "PENDING" %}selected{% endif %}>Pending</option>
+                <option value="IN_PROGRESS" {% if item.status == "IN_PROGRESS" %}selected{% endif %}>In Progress</option>
+                <option value="DONE" {% if item.status == "DONE" %}selected{% endif %}>Done</option>
+                <option value="NOT_APPLICABLE" {% if item.status == "NOT_APPLICABLE" %}selected{% endif %}>Not Applicable</option>
+            </select>
+            <input type="text" name="note" placeholder="note (optional)" value="{{ item.note }}">
+            <button type="submit">Update</button>
+        </form>
+    </li>
     {% empty %}
     <li>No checklist items yet.</li>
     {% endfor %}
@@ -84,8 +100,22 @@
 <h2>History</h2>
 <ul>
     {% for entry in req.history.all %}
-    <li>{{ entry.timestamp }} — {{ entry.actor }} — {{ entry.action }}</li>
+    <li>
+        {{ entry.timestamp }} — <strong>{{ entry.actor }}</strong> —
+        {% if entry.action == "STEP_CHANGE" %}
+            moved from {{ entry.old_value }} to {{ entry.new_value }}
+        {% elif entry.action == "OWNER_CHANGE" %}
+            changed owner from {{ entry.old_value|default:"nobody" }} to {{ entry.new_value|default:"nobody" }}
+        {% elif entry.action == "CHECKLIST_CHANGE" %}
+            set "{{ entry.field_changed }}" from {{ entry.old_value }} to {{ entry.new_value }}
+        {% elif entry.action == "FIELD_EDIT" %}
+            edited {{ entry.field_changed }}: {{ entry.old_value|default:"(blank)" }} &rarr; {{ entry.new_value|default:"(blank)" }}
+        {% else %}
+            {{ entry.action }}
+        {% endif %}
+        {% if entry.comment %}<br><em>{{ entry.comment }}</em>{% endif %}
+    </li>
     {% empty %}
-    <li>No history yet — this is expected until the transition engine logs history.</li>
+    <li>No history yet.</li>
     {% endfor %}
 </ul>

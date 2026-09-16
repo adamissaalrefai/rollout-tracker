@@ -1,0 +1,23 @@
+<h1>Bulk Import Requests (CSV)</h1>
+
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Upload and Import</button>
+</form>
+
+<a href="{% url 'request_list' %}">Back to list</a>
+
+{% if results %}
+<h2>Results</h2>
+<table border="1" cellpadding="6">
+    <tr><th>Row</th><th>Status</th><th>Reason</th></tr>
+    {% for r in results %}
+<li class="{% if 'error' in message.tags %}text-danger{% else %}text-success{% endif %}">
+        <td>{{ r.row }}</td>
+        <td>{% if r.success %}Created{% else %}Failed{% endif %}</td>
+        <td>{{ r.reason }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endif %}
