@@ -1,0 +1,9 @@
+<h1>{% if request_obj %}Edit{% else %}New{% endif %} Request</h1>
+
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Save</button>
+</form>
+
+<a href="{% url 'request_list' %}">Back to list</a>

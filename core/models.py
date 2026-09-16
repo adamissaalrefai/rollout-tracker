@@ -89,6 +89,11 @@ class Request(models.Model):
     # Every save that changes the request bumps this number by 1.
     version = models.PositiveIntegerField(default=1)
 
+    # Used by the On Hold / resume logic in workflow/engine.py: remembers
+    # which step to go back to, and why it was paused.
+    on_hold_from_step = models.CharField(max_length=20, null=True, blank=True)
+    on_hold_reason = models.CharField(max_length=500, blank=True, default="")
+
     # When it entered its current step — needed for late detection.
     # NOT auto_now_add: an auto_now_add field can only ever be set once, at
     # creation, and Django blocks any manual update to it after that. Since

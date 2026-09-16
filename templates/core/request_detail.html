@@ -1,0 +1,91 @@
+<h1>Request #{{ req.id }} — {{ req.partner.name }}</h1>
+
+<p>
+    Service: {{ req.get_service_display }}<br>
+    Direction: {{ req.get_direction_display }}<br>
+    Current step: {{ req.get_current_step_display }}<br>
+    Owner: {{ req.owner|default:"Unassigned" }}<br>
+    Target date: {{ req.target_date }}
+</p>
+
+<a href="{% url 'request_edit' req.pk %}">Edit</a>
+<a href="{% url 'request_list' %}">Back to list</a>
+
+{% if messages %}
+<ul>
+    {% for message in messages %}
+<li class="{% if 'error' in message.tags %}text-danger{% else %}text-success{% endif %}">
+    {{ message }}
+</li>    {% endfor %}
+</ul>
+{% endif %}
+
+<h2>Actions</h2>
+{% for t in transitions %}
+    {% if t.allowed %}
+        {% if t.needs_reason %}
+        <form method="post" action="{% url 'request_transition' req.pk t.target_step %}" style="margin-bottom: 8px;">
+            {% csrf_token %}
+            <label>{{ t.label }} — reason:</label>
+            <textarea name="reason" rows="2" required></textarea>
+            <button type="submit">{{ t.label }}</button>
+        </form>
+        {% else %}
+        <form method="post" action="{% url 'request_transition' req.pk t.target_step %}" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit">{{ t.label }}</button>
+        </form>
+        {% endif %}
+    {% else %}
+        <button disabled title="{{ t.disabled_reason }}">{{ t.label }}</button>
+        <small>{{ t.disabled_reason }}</small><br>
+    {% endif %}
+{% empty %}
+<p>No actions available from this step.</p>
+{% endfor %}
+
+<h2>Checklist</h2>
+<ul>
+    {% for item in req.checklist_items.all %}
+    <li>[{{ item.step }}] {{ item.label }} — {{ item.status }}</li>
+    {% empty %}
+    <li>No checklist items yet.</li>
+    {% endfor %}
+</ul>
+
+<h2>Comments</h2>
+<ul>
+    {% for comment in req.comments.all %}
+    <li><strong>{{ comment.author }}</strong> ({{ comment.timestamp }}): {{ comment.text }}</li>
+    {% empty %}
+    <li>No comments yet.</li>
+    {% endfor %}
+</ul>
+<form method="post">
+    {% csrf_token %}
+    {{ comment_form.as_p }}
+    <button type="submit" name="submit_comment">Add Comment</button>
+</form>
+
+<h2>Attachments</h2>
+<ul>
+    {% for attachment in req.attachments.all %}
+    <li><a href="{{ attachment.file.url }}">{{ attachment.file.name }}</a> — {{ attachment.uploaded_by }}</li>
+    {% empty %}
+    <li>No attachments yet.</li>
+    {% endfor %}
+</ul>
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ attachment_form.as_p }}
+    <button type="submit" name="submit_attachment">Upload</button>
+</form>
+
+<h2>History</h2>
+<ul>
+    {% for entry in req.history.all %}
+    <li>{{ entry.timestamp }} — {{ entry.actor }} — {{ entry.action }}</li>
+    {% empty %}
+    <li>No history yet — this is expected until the transition engine logs history.</li>
+    {% endfor %}
+</ul>
