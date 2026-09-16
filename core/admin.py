@@ -58,6 +58,14 @@ class RequestAdmin(admin.ModelAdmin):
     search_fields = ("partner__name", "partner__code")
     inlines = [ChecklistItemInline, CommentInline, AttachmentInline]
 
+    # §4: "If someone types the URL directly, the app must still refuse
+    # them" — that includes the Django admin. Without this, an admin
+    # user could drag current_step to LIVE by hand, completely bypassing
+    # perform_transition() and skipping every rule, role check, and
+    # history entry. These fields can only change through the real
+    # engine (or code that calls it) from here on.
+    readonly_fields = ("current_step", "on_hold_from_step", "on_hold_reason", "version", "step_entered_at")
+
 
 # Comment and Attachment are also registered on their own here, in case you
 # ever need to browse/search them directly rather than through a Request.

@@ -1,6 +1,5 @@
 from django import forms
 from django.utils import timezone
-
 from .models import Request, Comment, Attachment
 
 
@@ -12,7 +11,13 @@ class RequestForm(forms.ModelForm):
       1. target_date cannot be in the past
       2. the same partner + service + direction cannot have two
          unfinished requests open at the same time
+
+    Also carries a hidden 'version' field, used by request_edit() in
+    views.py for the two-people-editing protection from §6c — see the
+    view for how the actual conflict check happens.
     """
+
+    version = forms.IntegerField(widget=forms.HiddenInput())
 
     class Meta:
         model = Request
@@ -28,6 +33,17 @@ class RequestForm(forms.ModelForm):
             "target_date": forms.DateInput(attrs={"type": "date"}),
             "description": forms.Textarea(attrs={"rows": 4}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Pre-fill the hidden version field with whatever version was
+        # loaded when the page was rendered — this is the value the view
+        # compares against the database's CURRENT version on save, to
+        # detect if someone else changed the request in between.
+        if self.instance and self.instance.pk:
+            self.fields["version"].initial = self.instance.version
+        else:
+            self.fields["version"].initial = 1
 
     def clean_target_date(self):
         target_date = self.cleaned_data["target_date"]
@@ -87,3 +103,14 @@ class AttachmentForm(forms.ModelForm):
     class Meta:
         model = Attachment
         fields = ["file"]
+
+
+class CSVImportForm(forms.Form):
+    """Just a single file field — the actual row-by-row parsing and
+    validation happens in the view (core/views.py), reusing RequestForm
+    per row so the import obeys the exact same two rules as manual
+    creation (§5.3)."""
+
+    csv_file = forms.FileField(
+        help_text="Columns expected: partner_code, service, direction, priority, target_date, description"
+    )

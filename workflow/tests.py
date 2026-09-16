@@ -83,7 +83,6 @@ class TransitionTests(TestCase):
      with self.assertRaises(ValidationError):
         perform_transition(self.request, "TESTING",self.coordinator)
     
-    
     def test_testing_requires_checklist(self):
      perform_transition(self.request, "SUBMITTED",self.requester)
 

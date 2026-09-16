@@ -33,13 +33,9 @@ class Command(BaseCommand):
       - step_entered_at and version aren't updated by perform_transition,
         so late-detection and concurrency protection won't reflect
         real transition timing yet.
-      - Checklist template items aren't auto-copied onto a request when
-        it enters a step — this command does that copying itself, as a
-        workaround, inside _complete_checklist().
-      - valid_rejection_reason doesn't enforce the 20-character minimum
-        from the spec — this command still writes a real, proper-length
-        reason anyway, so the DATA is spec-correct even where the CHECK
-        isn't yet.
+      (Checklist auto-copy and the 20-char rejection check are both
+      implemented now in engine.py/conditions.py, so this command no
+      longer needs its own workarounds for either.)
 
     Run with:
         python manage.py seed_demo
@@ -240,16 +236,9 @@ class Command(BaseCommand):
         ))
 
     def _complete_checklist(self, req, step):
-        """Marks all required checklist items for a step as Done. Also
-        copies template items onto the request first if none exist yet —
-        a workaround for the engine not doing this automatically (§3)."""
-        items = req.checklist_items.filter(step=step)
-        if not items.exists():
-            templates = ChecklistTemplateItem.objects.filter(service=req.service, step=step)
-            for t in templates:
-                ChecklistItem.objects.create(
-                    request=req, step=step, label=t.label,
-                    required=t.required, status="DONE",
-                )
-        else:
-            items.filter(required=True).update(status="DONE")
+        """Marks all required checklist items for a step as Done. The
+        items themselves are created automatically now, by
+        perform_transition() copying the service's templates the moment
+        the request enters this step (§3) — no manual copying needed
+        here anymore."""
+        req.checklist_items.filter(step=step, required=True).update(status="DONE")
