@@ -1,5 +1,6 @@
 import random
 from datetime import timedelta
+from django.db import connection
 
 from django.contrib.auth.models import User, Group
 from django.core.management.base import BaseCommand
@@ -132,108 +133,266 @@ class Command(BaseCommand):
     # ---------- 120 requests, pushed through the real engine ----------
 
     def create_requests(self):
-        partners = list(Partner.objects.all())
-        requesters = list(User.objects.filter(groups__name="Requester"))
-        coordinators = list(User.objects.filter(groups__name="Coordinator"))
-        engineers = list(User.objects.filter(groups__name="Engineer"))
-        approvers = list(User.objects.filter(groups__name="Approver"))
-        owner_pool = list(User.objects.filter(groups__name__in=["Engineer", "Coordinator"]))
+      partners = list(Partner.objects.all())
+      requesters = list(User.objects.filter(groups__name="Requester"))
+      coordinators = list(User.objects.filter(groups__name="Coordinator"))
+      engineers = list(User.objects.filter(groups__name="Engineer"))
+      approvers = list(User.objects.filter(groups__name="Approver"))
 
-        if not all([partners, requesters, coordinators, engineers, approvers]):
-            self.stdout.write(self.style.ERROR(
-                "Missing partners or role users — something went wrong earlier in this command."
-            ))
-            return
+      owner_pool = list(
+        User.objects.filter(groups__name__in=["Engineer", "Coordinator"])
+     )
 
-        created_count = 0
-        skipped_count = 0
+      admin = User.objects.filter(username="admin").first()
 
-        outcomes = [
-            "draft", "submitted", "testing", "approval",
-            "deployment", "live", "rejected", "on_hold",
-        ]
-        weights = [8, 12, 15, 15, 15, 20, 8, 7]
+      if not all([partners, requesters, coordinators, engineers, approvers]):
+        self.stdout.write(self.style.ERROR(
+            "Missing partners or role users — something went wrong earlier "
+            "in this command."
+          ))
+        return
 
-        for i in range(120):
-            partner = random.choice(partners)
-            service = random.choice(SERVICE_CHOICES)[0]
-            direction = random.choice(["INBOUND", "OUTBOUND"])
-            target_date = timezone.now().date() + timedelta(days=random.randint(5, 90))
+      created_count = 0
+      skipped_count = 0
 
-            has_unfinished = Request.objects.filter(
-                partner=partner, service=service, direction=direction
-            ).exclude(current_step__in=[S.LIVE, S.REJECTED]).exists()
-            if has_unfinished:
-                skipped_count += 1
+      outcomes = [
+        "draft",
+        "submitted",
+        "testing",
+        "approval",
+        "deployment",
+        "live",
+        "rejected",
+        "on_hold",
+      ]
+
+      weights = [8, 12, 15, 15, 15, 20, 8, 7]
+
+      for i in range(120):
+        partner = random.choice(partners)
+        service = random.choice(SERVICE_CHOICES)[0]
+        direction = random.choice(["INBOUND", "OUTBOUND"])
+
+        # Create a mixture of normal and overdue target dates.
+        if i % 5 == 0:
+            target_date = timezone.now().date() - timedelta(
+                days=random.randint(3, 20)
+            )
+        else:
+            target_date = timezone.now().date() + timedelta(
+                days=random.randint(5, 90)
+            )
+
+        has_unfinished = Request.objects.filter(
+            partner=partner,
+            service=service,
+            direction=direction,
+         ).exclude(
+            current_step__in=[S.LIVE, S.REJECTED]
+         ).exists()
+
+        if has_unfinished:
+            skipped_count += 1
+            continue
+
+        req = Request.objects.create(
+            partner=partner,
+            service=service,
+            direction=direction,
+            priority=random.choice(
+                ["LOW", "NORMAL", "HIGH", "URGENT"]
+            ),
+            target_date=target_date,
+            requester=random.choice(requesters),
+            description=f"Enable {service} for {partner.name}",
+         )
+
+        created_count += 1
+
+        how_far = random.choices(
+            outcomes,
+            weights=weights,
+         )[0]
+
+        try:
+            if how_far == "draft":
                 continue
 
-            req = Request.objects.create(
-                partner=partner, service=service, direction=direction,
-                priority=random.choice(["LOW", "NORMAL", "HIGH", "URGENT"]),
-                target_date=target_date,
-                requester=random.choice(requesters),
-                description=f"Enable {service} for {partner.name}",
+            perform_transition(
+                req,
+                S.SUBMITTED,
+                actor=random.choice(requesters),
             )
-            created_count += 1
 
-            how_far = random.choices(outcomes, weights=weights)[0]
+            if how_far == "submitted":
+                continue
 
-            try:
-                if how_far == "draft":
-                    continue
-
-                perform_transition(req, S.SUBMITTED, actor=random.choice(requesters))
-                if how_far == "submitted":
-                    continue
-
+            # Assign some requests to admin so "My Open Items"
+            # is populated when logged in as admin.
+            if admin and i % 6 == 0:
+                req.owner = admin
+            else:
                 req.owner = random.choice(owner_pool)
-                req.save(update_fields=["owner"])
-                perform_transition(req, S.TESTING, actor=random.choice(coordinators))
-                self._complete_checklist(req, "TESTING")
-                if how_far == "testing":
-                    continue
 
-                perform_transition(req, S.APPROVAL, actor=random.choice(engineers))
-                self._complete_checklist(req, "APPROVAL")
-                req.comments.create(
-                    author=random.choice(engineers),
-                    text="Reviewed and looks good — approving to proceed.",
+            req.save(update_fields=["owner"])
+
+            perform_transition(
+                req,
+                S.TESTING,
+                actor=random.choice(coordinators),
+            )
+
+            self._complete_checklist(req, "TESTING")
+
+            if how_far == "testing":
+                continue
+
+            perform_transition(
+                req,
+                S.APPROVAL,
+                actor=random.choice(engineers),
+            )
+
+            self._complete_checklist(req, "APPROVAL")
+
+            req.comments.create(
+                author=random.choice(engineers),
+                text="Reviewed and looks good — approving to proceed.",
+            )
+
+            if how_far == "approval":
+                continue
+
+            perform_transition(
+                req,
+                S.DEPLOYMENT,
+                actor=random.choice(approvers),
+            )
+
+            self._complete_checklist(req, "DEPLOYMENT")
+
+            if how_far == "deployment":
+                continue
+
+            if how_far == "live":
+                req.actual_go_live_date = (
+                    timezone.now().date()
+                    - timedelta(days=random.randint(0, 120))
                 )
-                if how_far == "approval":
-                    continue
+                req.save(update_fields=["actual_go_live_date"])
 
-                perform_transition(req, S.DEPLOYMENT, actor=random.choice(approvers))
-                self._complete_checklist(req, "DEPLOYMENT")
-                if how_far == "deployment":
-                    continue
+                perform_transition(
+                    req,
+                    S.LIVE,
+                    actor=random.choice(owner_pool),
+                )
 
-                if how_far == "live":
-                    req.actual_go_live_date = timezone.now().date()
-                    req.save(update_fields=["actual_go_live_date"])
-                    perform_transition(req, S.LIVE, actor=random.choice(owner_pool))
+            elif how_far == "rejected":
+                req.comments.create(
+                    author=random.choice(approvers),
+                    text=(
+                        "Rejected: commercial terms could not be "
+                        "agreed with the partner."
+                    ),
+                )
 
-                elif how_far == "rejected":
-                    # A real, spec-length reason (20+ chars) even though
-                    # his current check doesn't enforce that length yet.
-                    req.comments.create(
-                        author=random.choice(approvers),
-                        text="Rejected: commercial terms could not be agreed with the partner.",
-                    )
-                    perform_transition(req, S.REJECTED, actor=random.choice(approvers))
+                perform_transition(
+                    req,
+                    S.REJECTED,
+                    actor=random.choice(approvers),
+                )
 
-                elif how_far == "on_hold":
-                    perform_transition(
-                        req, S.ON_HOLD,
-                        actor=random.choice(coordinators),
-                        reason="Waiting on legal sign-off before continuing.",
-                    )
+            elif how_far == "on_hold":
+                perform_transition(
+                    req,
+                    S.ON_HOLD,
+                    actor=random.choice(coordinators),
+                    reason="Waiting on legal sign-off before continuing.",
+                )
 
-            except ValidationError as e:
-                self.stdout.write(self.style.WARNING(f"Request {req.id} stopped early: {e}"))
+        except ValidationError as e:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Request {req.id} stopped early: {e}"
+                )
+            )
 
-        self.stdout.write(self.style.SUCCESS(
-            f"Created {created_count} requests ({skipped_count} skipped as duplicates)."
-        ))
+      self._make_demo_history_realistic()
+
+      self.stdout.write(
+        self.style.SUCCESS(
+            f"Created {created_count} requests "
+            f"({skipped_count} skipped as duplicates)."
+        )
+      )
+    
+    def _make_demo_history_realistic(self):
+      """
+      Give seeded requests realistic historical timing so the dashboard
+      can demonstrate average step duration and late detection.
+      """
+
+      from workflow.models import HistoryEntry
+
+      now = timezone.now()
+
+      requests = list(
+        Request.objects.all().order_by("-id")[:120]
+      )
+
+      for req in requests:
+        history = list(
+            HistoryEntry.objects.filter(
+                request=req,
+                action="STEP_CHANGE",
+            ).order_by("timestamp")
+        )
+
+        if not history:
+            continue
+
+        # Give each request a random historical starting point.
+        age_days = random.randint(10, 90)
+
+        created_at = now - timedelta(days=age_days)
+
+        # Request.created_at uses auto_now_add, so update it directly
+        # after creation for demo-data purposes.
+        Request.objects.filter(pk=req.pk).update(
+            created_at=created_at,
+        )
+
+        previous_time = created_at
+
+        for entry in history:
+            duration_days = random.randint(1, 7)
+
+            previous_time += timedelta(days=duration_days)
+
+            # HistoryEntry is append-only through the application API.
+            # The seed uses a direct SQL update solely to create
+            # historical demo timestamps.
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE workflow_historyentry
+                    SET timestamp = %s
+                    WHERE id = %s
+                    """,
+                    [previous_time, entry.pk],
+                )
+
+        # Make a portion of currently active requests deliberately late.
+        if (
+            req.current_step
+            not in [S.LIVE, S.REJECTED]
+            and req.id % 4 == 0
+        ):
+            late_days = random.randint(7, 15)
+
+            Request.objects.filter(pk=req.pk).update(
+                step_entered_at=now - timedelta(days=late_days),
+            )
 
     def _complete_checklist(self, req, step):
         """Marks all required checklist items for a step as Done. The

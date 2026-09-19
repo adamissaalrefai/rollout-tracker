@@ -1,5 +1,6 @@
 from django import forms
 from django.utils import timezone
+from django.contrib.auth.models import User
 from .models import Request, Comment, Attachment
 
 
@@ -25,6 +26,7 @@ class RequestForm(forms.ModelForm):
             "partner",
             "service",
             "direction",
+            "owner",
             "priority",
             "target_date",
             "description",
@@ -44,6 +46,11 @@ class RequestForm(forms.ModelForm):
             self.fields["version"].initial = self.instance.version
         else:
             self.fields["version"].initial = 1
+
+        # Owners are users with an Engineer or Coordinator role.
+        self.fields["owner"].queryset = User.objects.filter(
+            groups__name__in=["Engineer", "Coordinator"]
+        ).distinct()
 
     def clean_target_date(self):
         target_date = self.cleaned_data["target_date"]
