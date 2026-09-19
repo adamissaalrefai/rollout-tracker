@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -39,6 +40,9 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "core",
     "workflow",
+    "rest_framework",
+    "django_filters",
+    "drf_spectacular",
 ]
 
 MIDDLEWARE = [
@@ -52,6 +56,9 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = "rollouts.urls"
+LOGIN_URL = "/login/"
+LOGIN_REDIRECT_URL = "/requests/dashboard/"
+LOGOUT_REDIRECT_URL = "/login/"
 
 TEMPLATES = [
     {
@@ -124,3 +131,29 @@ STATIC_URL = "static/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+    ),
+    "DEFAULT_FILTER_BACKENDS": (
+        "django_filters.rest_framework.DjangoFilterBackend",
+    ),
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=2),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Rollout Tracker API",
+    "DESCRIPTION": "REST API for managing rollout requests and workflow transitions.",
+    "VERSION": "1.0.0",
+}
+
+# http://127.0.0.1:8000/api/docs/. swagger api documentation url

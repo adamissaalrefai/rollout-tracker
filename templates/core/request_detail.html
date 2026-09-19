@@ -1,121 +1,1441 @@
-<h1>Request #{{ req.id }} — {{ req.partner.name }}</h1>
+<!doctype html>
 
-<p>
-    Service: {{ req.get_service_display }}<br>
-    Direction: {{ req.get_direction_display }}<br>
-    Current step: {{ req.get_current_step_display }}<br>
-    Owner: {{ req.owner|default:"Unassigned" }}<br>
-    Target date: {{ req.target_date }}
-</p>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
 
-<a href="{% url 'request_edit' req.pk %}">Edit</a>
-<a href="{% url 'request_list' %}">Back to list</a>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-{% if messages %}
-<ul>
-    {% for message in messages %}
-<li class="{% if 'error' in message.tags %}text-danger{% else %}text-success{% endif %}">
-    {% endfor %}
-</ul>
-{% endif %}
+    <title>Request #{{ req.id }} | Rollout Tracker</title>
 
-<h2>Actions</h2>
-{% for t in transitions %}
-    {% if t.allowed %}
-        {% if t.needs_reason %}
-        <form method="post" action="{% url 'request_transition' req.pk t.target_step %}" style="margin-bottom: 8px;">
-            {% csrf_token %}
-            <input type="hidden" name="expected_version" value="{{ req.version }}">
-            <label>{{ t.label }} — reason:</label>
-            <textarea name="reason" rows="2" required></textarea>
-            <button type="submit">{{ t.label }}</button>
-        </form>
-        {% else %}
-        <form method="post" action="{% url 'request_transition' req.pk t.target_step %}" style="display:inline;">
-            {% csrf_token %}
-            <input type="hidden" name="expected_version" value="{{ req.version }}">
-            <button type="submit">{{ t.label }}</button>
-        </form>
-        {% endif %}
-    {% else %}
-        <button disabled title="{{ t.disabled_reason }}">{{ t.label }}</button>
-        <small>{{ t.disabled_reason }}</small><br>
-    {% endif %}
-{% empty %}
-<p>No actions available from this step.</p>
-{% endfor %}
+    <style>
+      \* {
+        box-sizing: border-box;
+      }
 
-<h2>Checklist</h2>
-<ul>
-    {% for item in req.checklist_items.all %}
-    <li>
-        [{{ item.step }}] {{ item.label }} — <strong>{{ item.status }}</strong>
-        {% if item.assignee %}(assigned: {{ item.assignee }}){% endif %}
-        {% if item.note %}<br><em>Note: {{ item.note }}</em>{% endif %}
-        <form method="post" action="{% url 'checklist_item_update' item.pk %}" style="display:inline;">
-            {% csrf_token %}
-            <select name="status">
-                <option value="PENDING" {% if item.status == "PENDING" %}selected{% endif %}>Pending</option>
-                <option value="IN_PROGRESS" {% if item.status == "IN_PROGRESS" %}selected{% endif %}>In Progress</option>
-                <option value="DONE" {% if item.status == "DONE" %}selected{% endif %}>Done</option>
-                <option value="NOT_APPLICABLE" {% if item.status == "NOT_APPLICABLE" %}selected{% endif %}>Not Applicable</option>
-            </select>
-            <input type="text" name="note" placeholder="note (optional)" value="{{ item.note }}">
-            <button type="submit">Update</button>
-        </form>
-    </li>
-    {% empty %}
-    <li>No checklist items yet.</li>
-    {% endfor %}
-</ul>
+      body {
+        margin: 0;
 
-<h2>Comments</h2>
-<ul>
-    {% for comment in req.comments.all %}
-    <li><strong>{{ comment.author }}</strong> ({{ comment.timestamp }}): {{ comment.text }}</li>
-    {% empty %}
-    <li>No comments yet.</li>
-    {% endfor %}
-</ul>
-<form method="post">
-    {% csrf_token %}
-    {{ comment_form.as_p }}
-    <button type="submit" name="submit_comment">Add Comment</button>
-</form>
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
 
-<h2>Attachments</h2>
-<ul>
-    {% for attachment in req.attachments.all %}
-    <li><a href="{{ attachment.file.url }}">{{ attachment.file.name }}</a> — {{ attachment.uploaded_by }}</li>
-    {% empty %}
-    <li>No attachments yet.</li>
-    {% endfor %}
-</ul>
-<form method="post" enctype="multipart/form-data">
-    {% csrf_token %}
-    {{ attachment_form.as_p }}
-    <button type="submit" name="submit_attachment">Upload</button>
-</form>
+        background: #f4f6f9;
 
-<h2>History</h2>
-<ul>
-    {% for entry in req.history.all %}
-    <li>
-        {{ entry.timestamp }} — <strong>{{ entry.actor }}</strong> —
-        {% if entry.action == "STEP_CHANGE" %}
-            moved from {{ entry.old_value }} to {{ entry.new_value }}
-        {% elif entry.action == "OWNER_CHANGE" %}
-            changed owner from {{ entry.old_value|default:"nobody" }} to {{ entry.new_value|default:"nobody" }}
-        {% elif entry.action == "CHECKLIST_CHANGE" %}
-            set "{{ entry.field_changed }}" from {{ entry.old_value }} to {{ entry.new_value }}
-        {% elif entry.action == "FIELD_EDIT" %}
-            edited {{ entry.field_changed }}: {{ entry.old_value|default:"(blank)" }} &rarr; {{ entry.new_value|default:"(blank)" }}
-        {% else %}
-            {{ entry.action }}
-        {% endif %}
-        {% if entry.comment %}<br><em>{{ entry.comment }}</em>{% endif %}
-    </li>
-    {% empty %}
-    <li>No history yet.</li>
-    {% endfor %}
-</ul>
+        color: #1f2937;
+      }
+
+      /*
+        =========================
+        NAVBAR
+        \=========================
+        */
+        .navbar {
+        height: 68px;
+
+        background: #111827;
+
+        color: white;
+
+        display: flex;
+
+        align-items: center;
+
+        justify-content: space-between;
+
+        padding: 0 32px;
+      }
+
+      .brand {
+        font-size: 20px;
+
+        font-weight: 700;
+      }
+
+      .nav-right {
+        display: flex;
+
+        align-items: center;
+
+        gap: 10px;
+      }
+
+      .nav-link {
+        color: #d1d5db;
+
+        text-decoration: none;
+
+        padding: 8px 12px;
+
+        border-radius: 7px;
+
+        font-size: 14px;
+      }
+
+      .logout-link {
+        display: inline-block !important;
+
+        color: #ff6b6b !important;
+
+        border: 1px solid #ff6b6b;
+
+        padding: 8px 14px;
+
+        border-radius: 8px;
+
+        text-decoration: none;
+
+        font-size: 14px;
+      }
+
+      .logout-link:hover {
+        background: rgba(255, 107, 107, 0.1);
+      }
+
+      .nav-link:hover {
+        background: #1f2937;
+
+        color: white;
+      }
+
+      .new-request {
+        background: #2563eb;
+
+        color: white;
+
+        text-decoration: none;
+
+        padding: 9px 15px;
+
+        border-radius: 7px;
+
+        font-size: 14px;
+
+        font-weight: 600;
+      }
+
+      /*
+        =========================
+        PAGE
+        \=========================
+        */
+        .container {
+        max-width: 1200px;
+
+        margin: 0 auto;
+
+        padding: 30px;
+      }
+
+      .breadcrumb {
+        margin-bottom: 12px;
+      }
+
+      .breadcrumb a {
+        color: #2563eb;
+
+        text-decoration: none;
+
+        font-size: 13px;
+
+        font-weight: 600;
+      }
+
+      .breadcrumb a:hover {
+        text-decoration: underline;
+      }
+
+      .page-header {
+        display: flex;
+
+        justify-content: space-between;
+
+        align-items: flex-start;
+
+        gap: 20px;
+
+        margin-bottom: 24px;
+      }
+
+      .page-header h1 {
+        margin: 0;
+
+        font-size: 30px;
+
+        letter-spacing: -0.8px;
+
+        color: #111827;
+      }
+
+      .page-header p {
+        margin: 6px 0 0;
+
+        color: #6b7280;
+
+        font-size: 14px;
+      }
+
+      .header-actions {
+        display: flex;
+
+        gap: 10px;
+
+        flex-shrink: 0;
+      }
+
+      .button {
+        display: inline-flex;
+
+        align-items: center;
+
+        justify-content: center;
+
+        padding: 9px 15px;
+
+        border-radius: 7px;
+
+        font-size: 13px;
+
+        font-weight: 600;
+
+        text-decoration: none;
+
+        border: 1px solid #d1d5db;
+
+        background: white;
+
+        color: #374151;
+
+        cursor: pointer;
+      }
+
+      .button:hover {
+        background: #f9fafb;
+      }
+
+      .button.primary {
+        background: #2563eb;
+
+        border-color: #2563eb;
+
+        color: white;
+      }
+
+      .button.primary:hover {
+        background: #1d4ed8;
+      }
+
+      /*
+        =========================
+        ALERTS
+        \=========================
+        */
+        .messages {
+        margin-bottom: 20px;
+      }
+
+      .message {
+        padding: 12px 15px;
+
+        border-radius: 8px;
+
+        margin-bottom: 8px;
+
+        font-size: 13px;
+
+        font-weight: 600;
+      }
+
+      .message.success {
+        background: #ecfdf5;
+
+        border: 1px solid #a7f3d0;
+
+        color: #047857;
+      }
+
+      .message.error {
+        background: #fef2f2;
+
+        border: 1px solid #fecaca;
+
+        color: #b91c1c;
+      }
+
+      /*
+        =========================
+        LAYOUT
+        \=========================
+        */
+        .grid {
+        display: grid;
+
+        grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+
+        gap: 20px;
+      }
+
+      .left-column,
+      .right-column {
+        display: flex;
+
+        flex-direction: column;
+
+        gap: 20px;
+      }
+
+      .card {
+        background: white;
+
+        border: 1px solid #e5e7eb;
+
+        border-radius: 12px;
+
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
+
+        overflow: hidden;
+      }
+
+      .card-header {
+        padding: 18px 20px;
+
+        border-bottom: 1px solid #e5e7eb;
+
+        display: flex;
+
+        justify-content: space-between;
+
+        align-items: center;
+
+        gap: 12px;
+      }
+
+      .card-header h2 {
+        margin: 0;
+
+        font-size: 16px;
+
+        color: #111827;
+      }
+
+      .card-body {
+        padding: 20px;
+      }
+
+      /*
+        =========================
+        REQUEST
+        INFO
+        \=========================
+        */
+        .info-grid {
+        display: grid;
+
+        grid-template-columns: repeat(2, 1fr);
+
+        gap: 18px 28px;
+      }
+
+      .info-item {
+        min-width: 0;
+      }
+
+      .info-label {
+        font-size: 11px;
+
+        font-weight: 700;
+
+        text-transform: uppercase;
+
+        letter-spacing: 0.5px;
+
+        color: #9ca3af;
+
+        margin-bottom: 5px;
+      }
+
+      .info-value {
+        font-size: 14px;
+
+        font-weight: 600;
+
+        color: #374151;
+
+        word-break: break-word;
+      }
+
+      .description {
+        margin-top: 22px;
+
+        padding-top: 18px;
+
+        border-top: 1px solid #e5e7eb;
+      }
+
+      .description-text {
+        color: #4b5563;
+
+        font-size: 14px;
+
+        line-height: 1.6;
+
+        white-space: pre-wrap;
+      }
+
+      /*
+        =========================
+        STATUS
+        BADGES
+        \=========================
+        */
+        .badge {
+        display: inline-flex;
+
+        align-items: center;
+
+        padding: 5px 10px;
+
+        border-radius: 999px;
+
+        font-size: 11px;
+
+        font-weight: 700;
+      }
+
+      .badge.draft {
+        background: #f3f4f6;
+
+        color: #4b5563;
+      }
+
+      .badge.submitted {
+        background: #eff6ff;
+
+        color: #1d4ed8;
+      }
+
+      .badge.testing {
+        background: #fef3c7;
+
+        color: #92400e;
+      }
+
+      .badge.approval {
+        background: #f3e8ff;
+
+        color: #7e22ce;
+      }
+
+      .badge.deployment {
+        background: #e0f2fe;
+
+        color: #0369a1;
+      }
+
+      .badge.live {
+        background: #dcfce7;
+
+        color: #15803d;
+      }
+
+      .badge.rejected {
+        background: #fee2e2;
+
+        color: #b91c1c;
+      }
+
+      .badge.on-hold {
+        background: #fef3c7;
+
+        color: #92400e;
+      }
+
+      /*
+        =========================
+        WORKFLOW
+        \=========================
+        */
+        .transition-list {
+        display: flex;
+
+        flex-direction: column;
+
+        gap: 10px;
+      }
+
+      .transition-item {
+        border: 1px solid #e5e7eb;
+
+        border-radius: 9px;
+
+        padding: 12px;
+      }
+
+      .transition-row {
+        display: flex;
+
+        align-items: center;
+
+        justify-content: space-between;
+
+        gap: 12px;
+      }
+
+      .transition-info {
+        min-width: 0;
+      }
+
+      .transition-name {
+        font-size: 13px;
+
+        font-weight: 700;
+
+        color: #374151;
+      }
+
+      .transition-reason {
+        margin-top: 4px;
+
+        color: #9ca3af;
+
+        font-size: 11px;
+      }
+
+      .transition-form {
+        margin-top: 10px;
+      }
+
+      .reason-input {
+        width: 100%;
+
+        min-height: 80px;
+
+        padding: 9px 10px;
+
+        border: 1px solid #d1d5db;
+
+        border-radius: 7px;
+
+        resize: vertical;
+
+        font-family: inherit;
+
+        font-size: 13px;
+
+        margin-bottom: 8px;
+      }
+
+      .reason-input:focus {
+        outline: none;
+
+        border-color: #2563eb;
+
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+      }
+
+      .transition-button {
+        border: 0;
+
+        background: #2563eb;
+
+        color: white;
+
+        padding: 8px 12px;
+
+        border-radius: 6px;
+
+        font-size: 12px;
+
+        font-weight: 700;
+
+        cursor: pointer;
+
+        white-space: nowrap;
+      }
+
+      .transition-button:hover {
+        background: #1d4ed8;
+      }
+
+      .transition-button.danger {
+        background: #dc2626;
+      }
+
+      .transition-button.danger:hover {
+        background: #b91c1c;
+      }
+
+      .disabled-transition {
+        opacity: 0.55;
+      }
+
+      /*
+        =========================
+        CHECKLIST
+        \=========================
+        */
+        .checklist-item {
+        padding: 14px 0;
+
+        border-bottom: 1px solid #f0f1f3;
+      }
+
+      .checklist-item:first-child {
+        padding-top: 0;
+      }
+
+      .checklist-item:last-child {
+        border-bottom: none;
+
+        padding-bottom: 0;
+      }
+
+      .checklist-top {
+        display: flex;
+
+        align-items: center;
+
+        justify-content: space-between;
+
+        gap: 12px;
+      }
+
+      .checklist-label {
+        font-size: 13px;
+
+        font-weight: 600;
+
+        color: #374151;
+      }
+
+      .required {
+        color: #dc2626;
+
+        font-size: 10px;
+
+        margin-left: 5px;
+      }
+
+      .checklist-form {
+        margin-top: 10px;
+
+        display: grid;
+
+        grid-template-columns: 150px 1fr auto;
+
+        gap: 8px;
+
+        align-items: center;
+      }
+
+      .checklist-form select,
+      .checklist-form input {
+        height: 36px;
+
+        padding: 0 9px;
+
+        border: 1px solid #d1d5db;
+
+        border-radius: 6px;
+
+        font-family: inherit;
+
+        font-size: 12px;
+
+        background: white;
+      }
+
+      .checklist-form button {
+        height: 36px;
+
+        border: 0;
+
+        background: #374151;
+
+        color: white;
+
+        padding: 0 12px;
+
+        border-radius: 6px;
+
+        font-size: 12px;
+
+        font-weight: 600;
+
+        cursor: pointer;
+      }
+
+      .checklist-form button:hover {
+        background: #111827;
+      }
+
+      .checklist-note {
+        margin-top: 6px;
+
+        color: #6b7280;
+
+        font-size: 11px;
+      }
+
+      /*
+        =========================
+        COMMENTS
+        \=========================
+        */
+        .comment {
+        padding: 14px 0;
+
+        border-bottom: 1px solid #f0f1f3;
+      }
+
+      .comment:first-child {
+        padding-top: 0;
+      }
+
+      .comment:last-child {
+        border-bottom: none;
+      }
+
+      .comment-header {
+        display: flex;
+
+        justify-content: space-between;
+
+        gap: 12px;
+
+        margin-bottom: 6px;
+      }
+
+      .comment-author {
+        font-size: 12px;
+
+        font-weight: 700;
+
+        color: #374151;
+      }
+
+      .comment-date {
+        font-size: 10px;
+
+        color: #9ca3af;
+      }
+
+      .comment-text {
+        color: #4b5563;
+
+        font-size: 13px;
+
+        line-height: 1.5;
+
+        white-space: pre-wrap;
+      }
+
+      .comment-form textarea {
+        width: 100%;
+
+        min-height: 90px;
+
+        padding: 10px;
+
+        border: 1px solid #d1d5db;
+
+        border-radius: 7px;
+
+        resize: vertical;
+
+        font-family: inherit;
+
+        font-size: 13px;
+      }
+
+      .comment-form textarea:focus {
+        outline: none;
+
+        border-color: #2563eb;
+      }
+
+      /*
+        =========================
+        ATTACHMENTS
+        \=========================
+        */
+        .attachment {
+        display: flex;
+
+        align-items: center;
+
+        justify-content: space-between;
+
+        gap: 12px;
+
+        padding: 12px 0;
+
+        border-bottom: 1px solid #f0f1f3;
+      }
+
+      .attachment:last-child {
+        border-bottom: none;
+      }
+
+      .attachment-name {
+        font-size: 13px;
+
+        font-weight: 600;
+
+        color: #374151;
+
+        word-break: break-all;
+      }
+
+      .attachment-meta {
+        font-size: 10px;
+
+        color: #9ca3af;
+
+        margin-top: 3px;
+      }
+
+      .attachment-form {
+        margin-top: 15px;
+
+        padding-top: 15px;
+
+        border-top: 1px solid #e5e7eb;
+      }
+
+      .attachment-form input[type="file"] {
+        width: 100%;
+
+        font-size: 12px;
+
+        margin-bottom: 10px;
+      }
+
+      /*
+        =========================
+        HISTORY
+        \=========================
+        */
+        .history-item {
+        position: relative;
+
+        padding: 0 0 18px 22px;
+
+        border-left: 2px solid #e5e7eb;
+
+        margin-left: 6px;
+      }
+
+      .history-item:last-child {
+        border-left-color: transparent;
+
+        padding-bottom: 0;
+      }
+
+      .history-dot {
+        position: absolute;
+
+        left: -6px;
+
+        top: 2px;
+
+        width: 10px;
+
+        height: 10px;
+
+        border-radius: 50%;
+
+        background: #2563eb;
+      }
+
+      .history-action {
+        font-size: 12px;
+
+        font-weight: 700;
+
+        color: #374151;
+      }
+
+      .history-details {
+        margin-top: 3px;
+
+        font-size: 11px;
+
+        color: #6b7280;
+
+        line-height: 1.5;
+      }
+
+      .history-meta {
+        margin-top: 4px;
+
+        font-size: 10px;
+
+        color: #9ca3af;
+      }
+
+      .empty {
+        color: #9ca3af;
+
+        font-size: 13px;
+
+        text-align: center;
+
+        padding: 15px 0;
+      }
+
+      /*
+        =========================
+        RESPONSIVE
+        \=========================
+        */
+        @media
+        (max-width: 900px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 700px) {
+        .container {
+          padding: 18px;
+        }
+
+        .navbar {
+          padding: 0 18px;
+        }
+
+        .page-header {
+          flex-direction: column;
+        }
+
+        .info-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .logout-link:hover {
+          background: rgba(255, 107, 107, 0.1);
+        }
+
+        .checklist-form {
+          grid-template-columns: 1fr;
+        }
+
+        .nav-link {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- NAVBAR -->
+
+    <nav class="navbar">
+      <div class="brand">Rollout Tracker</div>
+
+      <div class="nav-right">
+        <a href="{% url 'request_list' %}" class="nav-link"> Requests </a>
+
+        <a href="{% url 'dashboard' %}" class="nav-link"> Dashboard </a>
+
+  
+        <a href="{% url 'request_create' %}" class="new-request">
+          \+ New Request
+        </a>
+      </div>
+    </nav>
+
+    <main class="container">
+      <div class="breadcrumb">
+        <a href="{% url 'request_list' %}"> ← Back to Requests </a>
+      </div>
+
+      <!-- PAGE HEADER -->
+
+      <div class="page-header">
+        <div>
+          <h1>Request #{{ req.id }}</h1>
+
+          <p>{{ req.partner.name }} · {{ req.service }}</p>
+        </div>
+
+        <div class="header-actions">
+          <a href="{% url 'request_edit' req.id %}" class="button">
+            Edit Request
+          </a>
+        </div>
+      </div>
+
+      <!-- MESSAGES -->
+
+      {% if messages %}
+
+      <div class="messages">
+        {% for message in messages %}
+
+        <div class="message {% if message.tags %}{{ message.tags }}{% endif %}">
+          {{ message }}
+        </div>
+
+        {% endfor %}
+      </div>
+
+      {% endif %}
+
+      <div class="grid">
+        <!-- =========================
+
+           LEFT COLUMN
+
+           \========================= -->
+
+        <div class="left-column">
+          <!-- REQUEST INFORMATION -->
+
+          <div class="card">
+            <div class="card-header">
+              <h2>Request Information</h2>
+
+              <span class="badge {{ req.current_step|lower|cut:'_' }}">
+                {{ req.current_step|title }}
+              </span>
+            </div>
+
+            <div class="card-body">
+              <div class="info-grid">
+                <div class="info-item">
+                  <div class="info-label">Partner</div>
+
+                  <div class="info-value">
+                    {{ req.partner.name }}
+
+                    <span style="color: #9ca3af">
+                      ({{ req.partner.code }})
+                    </span>
+                  </div>
+                </div>
+
+                <div class="info-item">
+                  <div class="info-label">Service</div>
+
+                  <div class="info-value">{{ req.get_service_display }}</div>
+                </div>
+
+                <div class="info-item">
+                  <div class="info-label">Direction</div>
+
+                  <div class="info-value">{{ req.get_direction_display }}</div>
+                </div>
+
+                <div class="info-item">
+                  <div class="info-label">Priority</div>
+
+                  <div class="info-value">{{ req.get_priority_display }}</div>
+                </div>
+
+                <div class="info-item">
+                  <div class="info-label">Requester</div>
+
+                  <div class="info-value">{{ req.requester.username }}</div>
+                </div>
+
+                <div class="info-item">
+                  <div class="info-label">Owner</div>
+
+                  <div class="info-value">
+                    {% if req.owner %} {{ req.owner.username }} {% else %}
+
+                    <span style="color: #9ca3af"> Unassigned </span>
+
+                    {% endif %}
+                  </div>
+                </div>
+
+                <div class="info-item">
+                  <div class="info-label">Target Date</div>
+
+                  <div class="info-value">
+                    {{ req.target_date|date:"M d, Y" }}
+                  </div>
+                </div>
+
+                <div class="info-item">
+                  <div class="info-label">Go-Live Date</div>
+
+                  <div class="info-value">
+                    {% if req.actual_go_live_date %} {{
+                    req.actual_go_live_date|date:"M d, Y" }} {% else %}
+
+                    <span style="color: #9ca3af"> Not live yet </span>
+
+                    {% endif %}
+                  </div>
+                </div>
+
+                <div class="info-item">
+                  <div class="info-label">Created</div>
+
+                  <div class="info-value">
+                    {{ req.created_at|date:"M d, Y H:i" }}
+                  </div>
+                </div>
+
+                <div class="info-item">
+                  <div class="info-label">Current Step Since</div>
+
+                  <div class="info-value">
+                    {{ req.step_entered_at|date:"M d, Y H:i" }}
+                  </div>
+                </div>
+              </div>
+
+              {% if req.description %}
+
+              <div class="description">
+                <div class="info-label">Description</div>
+
+                <div class="description-text">{{ req.description }}</div>
+              </div>
+
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- CHECKLIST -->
+
+          <div class="card">
+            <div class="card-header">
+              <h2>Checklist</h2>
+            </div>
+
+            <div class="card-body">
+              {% for item in req.checklist_items.all %}
+
+              <div class="checklist-item">
+                <div class="checklist-top">
+                  <div class="checklist-label">
+                    {{ item.label }} {% if item.required %}
+
+                    <span class="required"> REQUIRED </span>
+
+                    {% endif %}
+                  </div>
+
+                  <span class="badge"> {{ item.get_status_display }} </span>
+                </div>
+
+                <form
+                  method="post"
+                  action="{% url 'checklist_item_update' item.id %}"
+                  class="checklist-form"
+                >
+                  {% csrf_token %}
+
+                  <select name="status">
+                    {% for value, label in item.STATUS_CHOICES %}
+
+                    <option
+                      value="{{ value }}"
+                      {%
+                      if
+                      item.status=""
+                      ="value"
+                      %}selected{%
+                      endif
+                      %}
+                    >
+                      {{ label }}
+                    </option>
+
+                    {% endfor %}
+                  </select>
+
+                  <input
+                    type="text"
+                    name="note"
+                    value="{{ item.note }}"
+                    placeholder="Optional note"
+                  />
+
+                  <button type="submit">Update</button>
+                </form>
+
+                {% if item.assignee %}
+
+                <div class="checklist-note">
+                  Assigned to {{ item.assignee.username }}
+                </div>
+
+                {% endif %}
+              </div>
+
+              {% empty %}
+
+              <div class="empty">No checklist items yet.</div>
+
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- COMMENTS -->
+
+          <div class="card">
+            <div class="card-header">
+              <h2>Comments</h2>
+            </div>
+
+            <div class="card-body">
+              {% for comment in req.comments.all %}
+
+              <div class="comment">
+                <div class="comment-header">
+                  <span class="comment-author">
+                    {{ comment.author.username }}
+                  </span>
+
+                  <span class="comment-date">
+                    {{ comment.created_at|date:"M d, Y H:i" }}
+                  </span>
+                </div>
+
+                <div class="comment-text">{{ comment.text }}</div>
+              </div>
+
+              {% empty %}
+
+              <div class="empty">No comments yet.</div>
+
+              {% endfor %}
+
+              <form method="post" class="comment-form" style="margin-top: 18px">
+                {% csrf_token %}
+
+                {{ comment_form.text }}
+
+                {% for error in comment_form.text.errors %}
+
+                <div class="field-error">{{ error }}</div>
+
+                {% endfor %}
+
+                <button
+                  type="submit"
+                  name="submit_comment"
+                  class="button primary"
+                  style="margin-top: 10px"
+                >
+                  Add Comment
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- =========================
+
+           RIGHT COLUMN
+
+           \========================= -->
+
+        <div class="right-column">
+          <!-- WORKFLOW ACTIONS -->
+
+          <div class="card">
+            <div class="card-header">
+              <h2>Workflow Actions</h2>
+            </div>
+
+            <div class="card-body">
+              <div class="transition-list">
+                {% for transition in transitions %}
+
+                <div
+                  class="transition-item {% if not transition.allowed %}disabled-transition{% endif %}"
+                >
+                  <div class="transition-row">
+                    <div class="transition-info">
+                      <div class="transition-name">{{ transition.label }}</div>
+
+                      {% if not transition.allowed %}
+
+                      <div class="transition-reason">
+                        {{ transition.disabled_reason }}
+                      </div>
+
+                      {% endif %}
+                    </div>
+
+                    {% if transition.allowed and not transition.needs_reason %}
+
+                    <form
+                      method="post"
+                      action="{% url 'request_transition' req.id transition.target_step %}"
+                    >
+                      {% csrf_token %}
+
+                      <input
+                        type="hidden"
+                        name="expected_version"
+                        value="{{ req.version }}"
+                      />
+
+                      <button type="submit" class="transition-button">
+                        {{ transition.label }}
+                      </button>
+                    </form>
+
+                    {% endif %}
+                  </div>
+
+                  {% if transition.allowed and transition.needs_reason %}
+
+                  <form
+                    method="post"
+                    action="{% url 'request_transition' req.id transition.target_step %}"
+                    class="transition-form"
+                  >
+                    {% csrf_token %}
+
+                    <input
+                      type="hidden"
+                      name="expected_version"
+                      value="{{ req.version }}"
+                    />
+
+                    <textarea
+                      name="reason"
+                      class="reason-input"
+                      placeholder="{% if transition.target_step == 'REJECTED' %}Enter rejection reason (minimum 20 characters)...{% else %}Enter reason for putting this request on hold...{% endif %}"
+                      required
+                    ></textarea>
+
+                    <button
+                      type="submit"
+                      class="transition-button {% if transition.target_step == 'REJECTED' %}danger{% endif %}"
+                    >
+                      {{ transition.label }}
+                    </button>
+                  </form>
+
+                  {% endif %}
+                </div>
+
+                {% empty %}
+
+                <div class="empty">No workflow actions available.</div>
+
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+
+          <!-- ATTACHMENTS -->
+
+          <div class="card">
+            <div class="card-header">
+              <h2>Attachments</h2>
+            </div>
+
+            <div class="card-body">
+              {% for attachment in req.attachments.all %}
+
+              <div class="attachment">
+                <div>
+                  <div class="attachment-name">{{ attachment.file.name }}</div>
+
+                  <div class="attachment-meta">
+                    Uploaded by {{ attachment.uploaded_by.username }}
+                  </div>
+                </div>
+
+                <a
+                  href="{{ attachment.file.url }}"
+                  target="_blank"
+                  class="button"
+                >
+                  Open
+                </a>
+              </div>
+
+              {% empty %}
+
+              <div class="empty">No attachments yet.</div>
+
+              {% endfor %}
+
+              <form
+                method="post"
+                enctype="multipart/form-data"
+                class="attachment-form"
+              >
+                {% csrf_token %}
+
+                {{ attachment_form.file }}
+
+                {% for error in attachment_form.file.errors %}
+
+                <div class="field-error">{{ error }}</div>
+
+                {% endfor %}
+
+                <button
+                  type="submit"
+                  name="submit_attachment"
+                  class="button primary"
+                  style="margin-top: 8px"
+                >
+                  Upload Attachment
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <!-- HISTORY -->
+
+          <div class="card">
+            <div class="card-header">
+              <h2>History</h2>
+            </div>
+
+            <div class="card-body">
+              {% for entry in req.history.all %}
+
+              <div class="history-item">
+                <div class="history-dot"></div>
+
+                <div class="history-action">{{ entry.action|title }}</div>
+
+                <div class="history-details">
+                  {% if entry.field_changed %}
+
+                  <strong> {{ entry.field_changed }} </strong>
+
+                  {% endif %} {% if entry.old_value or entry.new_value %} {% if
+                  entry.old_value %} {{ entry.old_value }} {% else %} — {% endif
+                  %} → {% if entry.new_value %} {{ entry.new_value }} {% else %}
+                  — {% endif %} {% endif %} {% if entry.comment %}
+
+                  <br />
+
+                  {{ entry.comment }} {% endif %}
+                </div>
+
+                <div class="history-meta">
+                  {{ entry.actor.username }} · {{ entry.timestamp|date:"M d, Y
+                  H:i" }}
+                </div>
+              </div>
+
+              {% empty %}
+
+              <div class="empty">No history entries yet.</div>
+
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

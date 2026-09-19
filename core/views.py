@@ -1,4 +1,5 @@
 import csv
+import json
 
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib import messages
@@ -14,6 +15,13 @@ from workflow.engine import perform_transition, CONDITIONS
 from workflow.transitions import TRANSITIONS
 from workflow.history import log_checklist_change, log_field_edit
 from workflow import steps as S
+from .dashboard import (
+    get_step_counts,
+    get_late_by_region,
+    get_average_days_by_step,
+    get_go_lives_by_month,
+    get_my_open_items,
+)
 
 # Which target steps need a typed reason from the user before submitting,
 # rather than just a plain "click to confirm" button.
@@ -92,6 +100,18 @@ def request_list(request):
     """
     filtered = RequestFilter(request.GET, queryset=Request.objects.all())
     return render(request, "core/request_list.html", {"filter": filtered})
+
+@login_required
+def dashboard(request):
+    context = {
+        "step_counts_json": json.dumps(get_step_counts()),
+        "late_by_region_json": json.dumps(get_late_by_region()),
+        "average_days_by_step_json": json.dumps(get_average_days_by_step()),
+        "go_lives_by_month_json": json.dumps(get_go_lives_by_month()),
+        "my_open_items": get_my_open_items(request.user),
+    }
+
+    return render(request, "core/dashboard.html", context)
 
 
 @login_required
